@@ -1,0 +1,46 @@
+name: Post changelog to Discord
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post release to Discord changelog channel
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
+          TAG: ${{ github.event.release.tag_name }}
+          BODY: ${{ github.event.release.body }}
+        run: |
+          node - <<'EOF'
+          (async () => {
+            const wh = process.env.WEBHOOK;
+            if (!wh) { console.log('DISCORD_CHANGELOG_WEBHOOK not set — skipping.'); return; }
+            const ver = (process.env.TAG || '').replace(/^v/, '');
+            let body = (process.env.BODY || '').trim();
+            if (body.length > 3500) body = body.slice(0, 3500) + '…';
+            const payload = {
+              username: 'AVX Sorter Updates',
+              avatar_url: 'https://avxsimulations.com/assets/avx-mark.png',
+              embeds: [{
+                author: { name: 'AVX Sorter', icon_url: 'https://avxsimulations.com/assets/avx-mark.png' },
+                title: `🚀 Version ${ver} is now available`,
+                url: 'https://avxsimulations.com/download.html',
+                description: body || 'A new update is rolling out now.',
+                color: parseInt('38BDF8', 16),
+                thumbnail: { url: 'https://avxsimulations.com/assets/avx-mark.png' },
+                fields: [{
+                  name: '⬇️ How to update',
+                  value: "It's automatic — the app updates in the background and applies next time you restart. Fresh install? **[Download the latest »](https://avxsimulations.com/download.html)**",
+                }],
+                footer: { text: 'AVX Sorter • avxsimulations.com', icon_url: 'https://avxsimulations.com/assets/avx-mark.png' },
+                timestamp: new Date().toISOString(),
+              }],
+            };
+            const res = await fetch(wh, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            console.log('Discord status', res.status);
+            if (res.status >= 300) { console.log(await res.text()); process.exit(1); }
+          })().catch((e) => { console.error(e); process.exit(1); });
+          EOF
