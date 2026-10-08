@@ -1,0 +1,61 @@
+name: Post AVX Tune changelog to Discord
+
+# Manual trigger: posts a published release of avxsim/avx-tune-releases to the
+# Discord changelog channel using this repo's DISCORD_CHANGELOG_WEBHOOK secret.
+# (The Tune releases repo gets its own automatic workflow once the secret is
+# copied there; until then this is the way to announce Tune releases.)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tune release tag, e.g. v1.2.0'
+        required: true
+        type: string
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post Tune release to Discord changelog channel
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          node - <<'EOF'
+          (async () => {
+            const wh = process.env.WEBHOOK;
+            if (!wh) { console.log('DISCORD_CHANGELOG_WEBHOOK not set, skipping.'); return; }
+            const tag = (process.env.TAG || '').trim();
+            const ver = tag.replace(/^v/, '');
+            const rel = await fetch(`https://api.github.com/repos/avxsim/avx-tune-releases/releases/tags/${encodeURIComponent(tag)}`,
+              { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'avx-announce' } });
+            if (!rel.ok) { console.error('release lookup failed', rel.status); process.exit(1); }
+            const r = await rel.json();
+            let body = String(r.body || '').trim();
+            body = body.replace(/^# AVX Tune [^\n]*\n+/, '');
+            body = body.replace(/\n---\n\*\*SHA-256\*\*[\s\S]*$/, '').trim();
+            if (body.length > 3500) body = body.slice(0, 3500) + '…';
+            const payload = {
+              username: 'AVX Tune Updates',
+              avatar_url: 'https://avxsimulations.com/assets/avx-mark.png',
+              embeds: [{
+                author: { name: 'AVX Tune', icon_url: 'https://avxsimulations.com/assets/avx-mark.png' },
+                title: `Version ${ver} is now available`,
+                url: 'https://avxsimulations.com/download.html?product=tune',
+                description: body || 'A new update is rolling out now.',
+                color: parseInt('F59E0B', 16),
+                thumbnail: { url: 'https://avxsimulations.com/assets/avx-mark.png' },
+                fields: [{
+                  name: 'How to update',
+                  value: "Automatic: the app updates in the background and applies next time you restart. Fresh install? **[Download the latest](https://avxsimulations.com/download.html?product=tune)**",
+                }],
+                footer: { text: 'AVX Tune · avxsimulations.com', icon_url: 'https://avxsimulations.com/assets/avx-mark.png' },
+                timestamp: r.published_at || new Date().toISOString(),
+              }],
+            };
+            const res = await fetch(wh, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            console.log('Discord status', res.status);
+            if (res.status >= 300) { console.log(await res.text()); process.exit(1); }
+          })().catch((e) => { console.error(e); process.exit(1); });
+          EOF
