@@ -21,6 +21,7 @@ jobs:
         env:
           WEBHOOK: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
           TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           node - <<'EOF'
           (async () => {
@@ -29,7 +30,8 @@ jobs:
             const tag = (process.env.TAG || '').trim();
             const ver = tag.replace(/^v/, '');
             const rel = await fetch(`https://api.github.com/repos/avxsim/avx-tune-releases/releases/tags/${encodeURIComponent(tag)}`,
-              { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'avx-announce' } });
+              { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'avx-announce',
+                           ...(process.env.GH_TOKEN ? { Authorization: `Bearer ${process.env.GH_TOKEN}` } : {}) } });
             if (!rel.ok) { console.error('release lookup failed', rel.status); process.exit(1); }
             const r = await rel.json();
             let body = String(r.body || '').trim();
