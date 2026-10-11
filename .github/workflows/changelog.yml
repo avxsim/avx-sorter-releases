@@ -13,14 +13,32 @@ jobs:
           WEBHOOK: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
           TAG: ${{ github.event.release.tag_name }}
           BODY: ${{ github.event.release.body }}
+          URL: ${{ github.event.release.html_url }}
         run: |
           node - <<'EOF'
           (async () => {
             const wh = process.env.WEBHOOK;
             if (!wh) { console.log('DISCORD_CHANGELOG_WEBHOOK not set — skipping.'); return; }
             const ver = (process.env.TAG || '').replace(/^v/, '');
-            let body = (process.env.BODY || '').trim();
-            if (body.length > 3500) body = body.slice(0, 3500) + '…';
+            // Embed description: prefer the hand-approved <!-- discord --> block
+            // (invisible on the GitHub release page). Otherwise: current version
+            // only (text before the first "---" rule), no H1, cut on a line
+            // boundary before 3500 chars, link to the full notes. Hard cap 4000.
+            const raw = String(process.env.BODY || '').replace(/\r\n/g, '\n');
+            const blk = raw.match(/<!--\s*discord\s*-->([\s\S]*?)<!--\s*\/discord\s*-->/);
+            let body;
+            if (blk && blk[1].trim()) {
+              body = blk[1].trim();
+            } else {
+              body = raw.replace(/<!--\s*discord\s*-->[\s\S]*?<!--\s*\/discord\s*-->/g, '').trim();
+              body = body.split('\n---\n')[0].replace(/^# [^\n]*\n+/, '').trim();
+              if (body.length > 3500) {
+                const nl = body.lastIndexOf('\n', 3500);
+                body = body.slice(0, nl > 0 ? nl : 3500).trimEnd() + '\n…';
+              }
+              if (process.env.URL) body += `\n\n[Full release notes](${process.env.URL})`;
+            }
+            if (body.length > 4000) body = body.slice(0, 3999) + '…';
             const payload = {
               username: 'AVX Sorter Updates',
               avatar_url: 'https://avxsimulations.com/assets/avx-mark.png',

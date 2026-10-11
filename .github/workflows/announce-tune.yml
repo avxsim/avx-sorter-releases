@@ -34,10 +34,27 @@ jobs:
                            ...(process.env.GH_TOKEN ? { Authorization: `Bearer ${process.env.GH_TOKEN}` } : {}) } });
             if (!rel.ok) { console.error('release lookup failed', rel.status); process.exit(1); }
             const r = await rel.json();
-            let body = String(r.body || '').trim();
-            body = body.replace(/^# AVX Tune [^\n]*\n+/, '');
-            body = body.replace(/\n---\n\*\*SHA-256\*\*[\s\S]*$/, '').trim();
-            if (body.length > 3500) body = body.slice(0, 3500) + '…';
+            // Embed description: prefer the hand-approved <!-- discord --> block
+            // (invisible on the GitHub release page). Otherwise: current version
+            // only (text before the first "---" rule, which also drops the SHA
+            // footer), no H1, cut on a line boundary before 3500 chars, link to
+            // the full notes. Hard cap 4000.
+            const raw = String(r.body || '').replace(/\r\n/g, '\n');
+            const blk = raw.match(/<!--\s*discord\s*-->([\s\S]*?)<!--\s*\/discord\s*-->/);
+            let body;
+            if (blk && blk[1].trim()) {
+              body = blk[1].trim();
+            } else {
+              body = raw.replace(/<!--\s*discord\s*-->[\s\S]*?<!--\s*\/discord\s*-->/g, '').trim();
+              body = body.replace(/\n---\n\*\*SHA-256\*\*[\s\S]*$/, '');
+              body = body.split('\n---\n')[0].replace(/^# [^\n]*\n+/, '').trim();
+              if (body.length > 3500) {
+                const nl = body.lastIndexOf('\n', 3500);
+                body = body.slice(0, nl > 0 ? nl : 3500).trimEnd() + '\n…';
+              }
+              if (r.html_url) body += `\n\n[Full release notes](${r.html_url})`;
+            }
+            if (body.length > 4000) body = body.slice(0, 3999) + '…';
             const payload = {
               username: 'AVX Tune Updates',
               avatar_url: 'https://avxsimulations.com/assets/avx-mark.png',
